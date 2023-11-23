@@ -1,55 +1,60 @@
-#include "quickjs/quickjs.h"
-#include "quickjs/quickjs-libc.h"
+/*
+ * QuickJS Javascript Engine Benchmark Suite
+ *
+ * Copyright (c) 2023 Divy Srivastava
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <time.h>
 
-double total = 0;
+#include "quickjs/quickjs.h"
+#include "quickjs/quickjs-libc.h"
 
-int Execute(JSContext *ctx, const char *filename, int eval_flags) {
+void Execute(JSContext *ctx, const char *filename, int eval_flags) {
     FILE *file = fopen(filename, "r");
-
+    /* assumes max test script size */
+    static char buf[8 << 20]; // 8 MB
     if (file == NULL) {
-        return 1;
+        fprintf(stderr, "Cannot open file: %s\n", filename);
+        return;
     }
-
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char *buffer = (char *)malloc(file_size + 1);
-    if (buffer == NULL) {
-        fclose(file);
-        fprintf(stderr, "Memory allocation error\n");
-        return 1;
-    }
-
-    size_t bytesRead = fread(buffer, 1, file_size, file);
+    size_t nread = fread(buf, 1, sizeof(buf), file);
     fclose(file);
-
-    if (bytesRead != file_size) {
-        fprintf(stderr, "Error reading file: %s\n", filename);
-        printf("bytesRead: %zu, file_size: %ld\n", bytesRead, file_size);
-        free(buffer);
-        return 1;
+    if (nread == 0) {
+        fprintf(stderr, "fread failed: %s\n", filename);
+        return;
     }
+    if (nread == sizeof(buf)) {
+        fprintf(stderr, "file too large: %s\n", filename);
+        return;
+    }
+    buf[nread] = '\0';
 
-    buffer[file_size] = '\0';
-
-    JSValue ret_val = JS_Eval(ctx, buffer, file_size, filename, eval_flags);
-
+    JSValue ret_val = JS_Eval(ctx, buf, nread, filename, eval_flags);
     if (JS_IsException(ret_val)) {
-        printf("Error %s\n", JS_ToCString(ctx, JS_GetException(ctx)));
-        JS_FreeValue(ctx, ret_val);
-        free(buffer);
-        return 1;
+        JSValue exception = JS_GetException(ctx);
+        printf("Error %s\n", JS_ToCString(ctx, exception));
+        JS_FreeValue(ctx, exception);
     }
-
     JS_FreeValue(ctx, ret_val);
-    free(buffer);
-
-    return 0;
+    return;
 }
 
 int main(int argc, char **argv) {
@@ -62,7 +67,7 @@ int main(int argc, char **argv) {
     JS_SetMaxStackSize(rt, 864 * 1024); // 864 KB
 
     Execute(ctx, "octane/base.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/richards", JS_EVAL_TYPE_GLOBAL);
+    Execute(ctx, "octane/richards.js", JS_EVAL_TYPE_GLOBAL);
     Execute(ctx, "octane/deltablue.js", JS_EVAL_TYPE_GLOBAL);
     Execute(ctx, "octane/crypto.js", JS_EVAL_TYPE_GLOBAL);
     Execute(ctx, "octane/raytrace.js", JS_EVAL_TYPE_GLOBAL);
