@@ -31,73 +31,56 @@
 double total = 0;
 
 int Execute(JSContext *ctx, const char *filename) {
+    clock_t start_time, end_time;
+    double execution_time;
+    /* assumes max test script size */
+    static char buf[8 << 20]; // 8 MB
+
     FILE *file = fopen(filename, "r");
-
-    if (file == NULL) {
-        return 1;
-    }
-
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char *buffer = (char *)malloc(file_size + 1);
-    if (buffer == NULL) {
-        fclose(file);
-        fprintf(stderr, "Memory allocation error\n");
-        return 1;
-    }
-
-    size_t bytesRead = fread(buffer, 1, file_size, file);
+    if (file == NULL)
+        return -1;
+    size_t nread = fread(buf, 1, sizeof(buf), file);
     fclose(file);
-
-    if (bytesRead != file_size) {
-        fprintf(stderr, "Error reading file: %s\n", filename);
-        printf("bytesRead: %zu, file_size: %ld\n", bytesRead, file_size);
-        free(buffer);
-        return 1;
+    if (nread == 0) {
+        fprintf(stderr, "fread failed: %s\n", filename);
+        return -1;
     }
+    if (nread == sizeof(buf)) {
+        fprintf(stderr, "file too large: %s\n", filename);
+        return -1;
+    }
+    buf[nread] = '\0';
 
-    buffer[file_size] = '\0';
-
-    clock_t start_time = clock();
-    JSValue ret_val = JS_Eval(ctx, buffer, file_size, filename, JS_EVAL_TYPE_GLOBAL);
-    clock_t end_time = clock();
-    double execution_time = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
+    start_time = clock();
+    JSValue ret_val = JS_Eval(ctx, buf, nread, filename, JS_EVAL_TYPE_GLOBAL);
+    end_time = clock();
+    execution_time = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
     total += execution_time;
 
+    printf("%s (%.4f seconds)\n", filename, execution_time);
+
     if (JS_IsException(ret_val)) {
-        printf("Error %s\n", JS_ToCString(ctx, JS_GetException(ctx)));
-        JS_FreeValue(ctx, ret_val);
-        free(buffer);
-        return 1;
+        JSValue exception = JS_GetException(ctx);
+        printf("Error %s\n", JS_ToCString(ctx, exception));
+        JS_FreeValue(ctx, exception);
+        return -1;
     }
 
-    printf("File: %s, Execution Time: %.4f seconds\n", filename, execution_time);
-
     JS_FreeValue(ctx, ret_val);
-    free(buffer);
-
     return 0;
 }
 
 void RunTest(JSContext* ctx, char* path, char* buffer) {
-        char *fullpath = malloc(strlen(path) + strlen(buffer) + strlen("-data.js") + 1);
+    char fullpath[256];
 
-        strcpy(fullpath, path);
-        strcat(fullpath, buffer);
+    snprintf(fullpath, sizeof(fullpath), "%s%s-data.js", path, buffer);
+    /* Pass, only used for kraken. */
+    Execute(ctx, fullpath);
 
-        strcat(fullpath, "-data.js");
-        if (Execute(ctx, fullpath) != 0) {
-            // Pass, only used for kraken.
-        }
-
-        fullpath[strlen(fullpath) - 8] = '\0';
-        strcat(fullpath, ".js");
-
-        if (Execute(ctx, fullpath) != 0) {
-            fprintf(stderr, "Error executing file: %s\n", buffer);
-        }
+    snprintf(fullpath, sizeof(fullpath), "%s%s.js", path, buffer);
+    if (Execute(ctx, fullpath) != 0) {
+        fprintf(stderr, "Error executing file: %s\n", buffer);
+    }
 }
 
 int main(int argc, char **argv) {
@@ -112,12 +95,10 @@ int main(int argc, char **argv) {
     JS_SetMaxStackSize(rt, 864 * 1024); // 864 KB
 
     char *path = argv[1];
-    
-    char *filename = malloc(strlen(path) + strlen("LIST"));
-    strcpy(filename, path);
-    strcat(filename, "LIST");
-    FILE *listFile = fopen(filename, "r");
+    char filename[256];
+    snprintf(filename, sizeof(filename), "%s%s", path, "LIST");
 
+    FILE *listFile = fopen(filename, "r");
     if (listFile == NULL) {
         fprintf(stderr, "Error opening file: %s\n", filename);
         return 1;
@@ -125,10 +106,8 @@ int main(int argc, char **argv) {
 
     char buffer[100]; // Adjust the buffer size as needed
     while (fgets(buffer, sizeof(buffer), listFile) != NULL) {
-        size_t len = strlen(buffer);
-        if (len > 0 && buffer[len - 1] == '\n') {
-            buffer[len - 1] = '\0';
-        }
+        size_t i = strcspn(buffer, "\n");
+        buffer[i] = '\0';
         if (argc == 3 && strcmp(argv[2], buffer) != 0) {
             printf("Skipping %s\n", buffer);
             continue;
