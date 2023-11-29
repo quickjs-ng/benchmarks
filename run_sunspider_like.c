@@ -61,7 +61,20 @@ int Execute(JSContext *ctx, const char *filename) {
 
     if (JS_IsException(ret_val)) {
         JSValue exception = JS_GetException(ctx);
-        printf("Error %s\n", JS_ToCString(ctx, exception));
+        if (JS_IsError(ctx, exception)) {
+            JSValue stack;
+            const char *stack_str;
+
+            stack = JS_GetPropertyStr(ctx, exception, "stack");
+            if (!JS_IsUndefined(stack)) {
+                stack_str = JS_ToCString(ctx, stack);
+                if (stack_str) {
+                    printf("%s\n", stack_str);
+                    JS_FreeCString(ctx, stack_str);
+                }
+            }
+            JS_FreeValue(ctx, stack);
+        }
         JS_FreeValue(ctx, exception);
         return -1;
     }
@@ -92,7 +105,8 @@ int main(int argc, char **argv) {
     JSRuntime *rt = JS_NewRuntime();
     JSContext *ctx = JS_NewContext(rt);
 
-    JS_SetMaxStackSize(rt, 864 * 1024); // 864 KB
+    /* disable stack limit */
+    JS_SetMaxStackSize(rt, 0);
 
     char *path = argv[1];
     char filename[256];

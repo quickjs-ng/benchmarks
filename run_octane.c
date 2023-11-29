@@ -50,7 +50,20 @@ void Execute(JSContext *ctx, const char *filename, int eval_flags) {
     JSValue ret_val = JS_Eval(ctx, buf, nread, filename, eval_flags);
     if (JS_IsException(ret_val)) {
         JSValue exception = JS_GetException(ctx);
-        printf("Error %s\n", JS_ToCString(ctx, exception));
+        if (JS_IsError(ctx, exception)) {
+            JSValue stack;
+            const char *stack_str;
+
+            stack = JS_GetPropertyStr(ctx, exception, "stack");
+            if (!JS_IsUndefined(stack)) {
+                stack_str = JS_ToCString(ctx, stack);
+                if (stack_str) {
+                    printf("%s\n", stack_str);
+                    JS_FreeCString(ctx, stack_str);
+                }
+            }
+            JS_FreeValue(ctx, stack);
+        }
         JS_FreeValue(ctx, exception);
     }
     JS_FreeValue(ctx, ret_val);
@@ -63,8 +76,8 @@ int main(int argc, char **argv) {
 
     /* system modules */
     js_init_module_std(ctx, "std");
-
-    JS_SetMaxStackSize(rt, 864 * 1024); // 864 KB
+    /* disable stack limit */
+    JS_SetMaxStackSize(rt, 0);
 
     Execute(ctx, "octane/base.js", JS_EVAL_TYPE_GLOBAL);
     Execute(ctx, "octane/richards.js", JS_EVAL_TYPE_GLOBAL);
