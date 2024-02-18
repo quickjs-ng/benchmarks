@@ -23,11 +23,22 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#ifdef NO_INCLUDE_DIR
+#include "quickjs.h"
+#include "quickjs-libc.h"
+#else
 #include "quickjs/quickjs.h"
 #include "quickjs/quickjs-libc.h"
+#endif
 
-void Execute(JSContext *ctx, const char *filename, int eval_flags) {
+void Execute(JSContext *ctx, const char *path, const char *filename, int eval_flags) {
+    char pathname[1024];
+
+    snprintf(pathname, sizeof pathname, "%s%s", path, filename);
+    filename = pathname;
+
     FILE *file = fopen(filename, "r");
     /* assumes max test script size */
     static char buf[8 << 20]; // 8 MB
@@ -73,34 +84,66 @@ void Execute(JSContext *ctx, const char *filename, int eval_flags) {
 int main(int argc, char **argv) {
     JSRuntime *rt = JS_NewRuntime();
     JSContext *ctx = JS_NewContext(rt);
+    const char *path = "";
+    int argnum = 1;
 
     /* system modules */
     js_init_module_std(ctx, "std");
     /* disable stack limit */
     JS_SetMaxStackSize(rt, 0);
 
-    Execute(ctx, "octane/base.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/richards.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/deltablue.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/crypto.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/raytrace.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/earley-boyer.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/regexp.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/splay.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/navier-stokes.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/pdfjs.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/mandreel.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/gbemu-part1.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/gbemu-part2.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/code-load.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/box2d.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/zlib.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/zlib-data.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/typescript.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/typescript-input.js", JS_EVAL_TYPE_GLOBAL);
-    Execute(ctx, "octane/typescript-compiler.js", JS_EVAL_TYPE_GLOBAL);
+    if (argc > 1) {
+        size_t len = strlen(argv[1]);
+        if (len == 0 || argv[1][len - 1] == '/') {
+            path = argv[1];
+            argnum = 2;
+        }
+    }
 
-    Execute(ctx, "run_octane.js", JS_EVAL_TYPE_MODULE);
+    Execute(ctx, path, "octane/base.js", JS_EVAL_TYPE_GLOBAL);
+
+    static const char *testfile[] = {
+        "octane/richards.js",
+        "octane/deltablue.js",
+        "octane/crypto.js",
+        "octane/raytrace.js",
+        "octane/earley-boyer.js",
+        "octane/regexp.js",
+        "octane/splay.js",
+        "octane/navier-stokes.js",
+        "octane/pdfjs.js",
+        "octane/mandreel.js",
+        "octane/gbemu-part1.js",
+        "octane/gbemu-part2.js",
+        "octane/code-load.js",
+        "octane/box2d.js",
+        "octane/zlib.js",
+        "octane/zlib-data.js",
+        "octane/typescript.js",
+        "octane/typescript-input.js",
+        "octane/typescript-compiler.js",
+    };
+    int testfile_number = sizeof(testfile) / sizeof(testfile[0]);
+
+    for (int test = 0; test < testfile_number; test++) {
+        const char *filename = testfile[test];
+        if (argc > argnum) {
+            int found = 0;
+            for (int i = argnum; i < argc; i++) {
+                if (strstr(filename, argv[i])) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) {
+                printf("Skipping %s%s\n", path, filename);
+                continue;
+            }
+        }
+        Execute(ctx, path, filename, JS_EVAL_TYPE_GLOBAL);
+    }
+
+    Execute(ctx, path, "run_octane.js", JS_EVAL_TYPE_MODULE);
 
     JS_FreeContext(ctx);
 

@@ -16,7 +16,7 @@ function PrintError(name, error) {
 
 function PrintScore(score) {
   printf("----\n");
-  printf("Score (version " + BenchmarkSuite.version + "): " + score);
+  printf("Score (version " + BenchmarkSuite.version + "): " + score + "\n");
 }
 
 BenchmarkSuite.RunSuites({
