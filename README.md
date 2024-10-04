@@ -46,3 +46,14 @@ Eg:
 ```bash
 ./build/run_octane
 ```
+
+### V8
+
+For the V8 benchmarks Node is used as the runner:
+
+```bash
+cd v8
+node benchmark.js "QuickJS (master)" ../../quickjs/build/qjs-master "QuickJS (this PR)" ../../quickjs/build/qjs "V8 (jitless)" "v8 --jitless"
+```
+
+The script takes pairs of "name" and "command" and generates a Markdown table at the end.
