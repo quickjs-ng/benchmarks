@@ -26,7 +26,11 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef NO_INCLUDE_DIR
+#include "quickjs.h"
+#else
 #include "quickjs/quickjs.h"
+#endif
 
 double total = 0;
 
